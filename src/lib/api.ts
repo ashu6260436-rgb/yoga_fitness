@@ -1,96 +1,33 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-
-interface ApiError {
-  error: string;
-  errors?: Array<{ msg: string; param: string }>;
-}
+import { db } from './database';
+import { supabase } from './supabase';
 
 class ApiClient {
-  private getAuthToken(): string | null {
-    return localStorage.getItem('token');
-  }
-
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const token = this.getAuthToken();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const error: ApiError = await response.json();
-      throw new Error(error.error || 'An error occurred');
-    }
-
-    return response.json();
-  }
-
-  async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET' });
-  }
-
-  async post<T>(endpoint: string, data?: unknown): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async put<T>(endpoint: string, data?: unknown): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
-  }
-
-  auth = {
-    register: (data: {
-      name: string;
-      email: string;
-      phone: string;
-      studentId: string;
-      password: string;
-    }) => this.post<{ user: any; token: string; message: string }>('/auth/register', data),
-
-    login: (data: { email: string; password: string }) =>
-      this.post<{ user: any; token: string; message: string }>('/auth/login', data),
-
-    getProfile: () => this.get<{ user: any }>('/auth/profile'),
-
-    updateProfile: (data: { name: string; phone: string }) =>
-      this.put<{ user: any; message: string }>('/auth/profile', data),
-
-    changePassword: (data: { currentPassword: string; newPassword: string }) =>
-      this.post<{ message: string }>('/auth/change-password', data),
-  };
-
   events = {
-    getAll: (type?: 'upcoming' | 'previous') =>
-      this.get<{ events: any[] }>(type ? `/events?type=${type}` : '/events'),
+    getAll: async (type?: 'upcoming' | 'previous') => {
+      let events = await db.getEvents();
+      if (type) {
+        events = events.filter(e => e.type === type);
+      }
+      return { events };
+    },
 
-    getUpcoming: () => this.get<{ events: any[] }>('/events/upcoming'),
+    getUpcoming: async () => {
+      const events = await db.getEvents();
+      return { events: events.filter(e => e.type === 'upcoming') };
+    },
 
-    getPrevious: () => this.get<{ events: any[] }>('/events/previous'),
+    getPrevious: async () => {
+      const events = await db.getEvents();
+      return { events: events.filter(e => e.type === 'previous') };
+    },
 
-    getById: (id: string) => this.get<{ event: any }>(`/events/${id}`),
+    getById: async (id: string) => {
+      const event = await db.getEventById(id);
+      if (!event) throw new Error('Event not found');
+      return { event };
+    },
 
-    create: (data: {
+    create: async (data: {
       title: string;
       description: string;
       date: string;
@@ -101,9 +38,17 @@ class ApiClient {
       image?: string;
       type: 'upcoming' | 'previous';
       instructor: string;
-    }) => this.post<{ event: any; message: string }>('/events', data),
+    }) => {
+      const event = await db.addEvent({
+        ...data,
+        max_participants: data.maxParticipants,
+        current_participants: 0,
+        image: data.image || '',
+      } as any);
+      return { event, message: 'Event created successfully' };
+    },
 
-    update: (
+    update: async (
       id: string,
       data: {
         title: string;
@@ -117,63 +62,145 @@ class ApiClient {
         type: 'upcoming' | 'previous';
         instructor: string;
       }
-    ) => this.put<{ event: any; message: string }>(`/events/${id}`, data),
+    ) => {
+      const event = await db.updateEvent(id, {
+        ...data,
+        max_participants: data.maxParticipants,
+        image: data.image || '',
+      } as any);
+      return { event, message: 'Event updated successfully' };
+    },
 
-    delete: (id: string) => this.delete<{ message: string }>(`/events/${id}`),
+    delete: async (id: string) => {
+      await db.deleteEvent(id);
+      return { message: 'Event deleted successfully' };
+    },
   };
 
   users = {
-    getAll: () => this.get<{ users: any[]; count: number }>('/users'),
+    getAll: async () => {
+      const users = await db.getUsers();
+      return { users, count: users.length };
+    },
 
-    getStats: () =>
-      this.get<{
-        stats: { totalUsers: number; totalBookings: number; totalEvents: number };
-      }>('/users/stats'),
+    getStats: async () => {
+      const users = await db.getUsers();
+      const bookings = await db.getBookings();
+      const events = await db.getEvents();
+      return {
+        stats: {
+          totalUsers: users.length,
+          totalBookings: bookings.length,
+          totalEvents: events.length,
+        },
+      };
+    },
 
-    getById: (id: string) => this.get<{ user: any }>(`/users/${id}`),
+    getById: async (id: string) => {
+      const user = await db.getUserById(id);
+      if (!user) throw new Error('User not found');
+      return { user };
+    },
 
-    updateRole: (id: string, role: 'student' | 'admin') =>
-      this.put<{ user: any; message: string }>(`/users/${id}/role`, { role }),
+    updateRole: async (id: string, role: 'student' | 'admin' | 'other') => {
+      const user = await db.updateUser(id, { role });
+      return { user, message: 'Role updated successfully' };
+    },
 
-    delete: (id: string) => this.delete<{ message: string }>(`/users/${id}`),
+    delete: async (id: string) => {
+      const { error } = await supabase.auth.admin.deleteUser(id);
+      if (error) throw error;
+      return { message: 'User deleted successfully' };
+    },
   };
 
   bookings = {
-    getAll: () => this.get<{ bookings: any[] }>('/bookings/all'),
+    getAll: async () => {
+      const bookings = await db.getBookings();
+      return { bookings };
+    },
 
-    getMy: () => this.get<{ bookings: any[] }>('/bookings/my-bookings'),
+    getMy: async () => {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) throw new Error('Not authenticated');
 
-    getById: (id: string) => this.get<{ booking: any }>(`/bookings/${id}`),
+      const bookings = await db.getBookingsByUserId(session.data.session.user.id);
+      return { bookings };
+    },
 
-    create: (eventId: string) =>
-      this.post<{ booking: any; requiresPayment: boolean; message: string }>(
-        '/bookings',
-        { eventId }
-      ),
+    getById: async (id: string) => {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-    initiatePayment: (bookingId: string) =>
-      this.post<{
-        success: boolean;
-        paymentUrl: string;
-        orderId: string;
-        transactionId: string;
-      }>(`/bookings/${bookingId}/initiate-payment`),
+      if (error) throw error;
+      if (!data) throw new Error('Booking not found');
+      return { booking: data };
+    },
 
-    verifyPayment: (bookingId: string, paymentId: string, orderId: string) =>
-      this.post<{ booking: any; message: string }>(
-        `/bookings/${bookingId}/verify-payment`,
-        { paymentId, orderId }
-      ),
+    create: async (eventId: string) => {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) throw new Error('Not authenticated');
 
-    cancel: (id: string) => this.delete<{ message: string }>(`/bookings/${id}`),
-  };
+      const event = await db.getEventById(eventId);
+      if (!event) throw new Error('Event not found');
 
-  emails = {
-    getAll: () => this.get<{ emails: any[] }>('/emails'),
+      if (event.current_participants >= event.max_participants) {
+        throw new Error('Event is full');
+      }
 
-    getMy: () => this.get<{ emails: any[] }>('/emails/my-emails'),
+      const booking = await db.addBooking({
+        user_id: session.data.session.user.id,
+        event_id: eventId,
+        booking_date: new Date().toISOString(),
+        payment_status: event.price > 0 ? 'pending' : 'completed',
+        payment_id: '',
+        amount: event.price,
+      });
 
-    getById: (id: string) => this.get<{ email: any }>(`/emails/${id}`),
+      await db.updateEvent(eventId, {
+        current_participants: event.current_participants + 1,
+      });
+
+      await db.addNotification({
+        user_id: session.data.session.user.id,
+        title: 'Booking Confirmed',
+        message: `Your booking for "${event.title}" has been confirmed!`,
+        type: 'booking',
+        read: false,
+      });
+
+      return {
+        booking,
+        requiresPayment: event.price > 0,
+        message: 'Booking created successfully',
+      };
+    },
+
+    initiatePayment: async (bookingId: string) => {
+      return {
+        success: true,
+        paymentUrl: '#',
+        orderId: 'ORDER' + Date.now(),
+        transactionId: 'TXN' + Date.now(),
+      };
+    },
+
+    verifyPayment: async (bookingId: string, paymentId: string, orderId: string) => {
+      const booking = await db.updateBooking(bookingId, {
+        payment_status: 'completed',
+        payment_id: paymentId,
+      });
+      return { booking, message: 'Payment verified successfully' };
+    },
+
+    cancel: async (id: string) => {
+      const { error } = await supabase.from('bookings').delete().eq('id', id);
+      if (error) throw error;
+      return { message: 'Booking cancelled successfully' };
+    },
   };
 }
 

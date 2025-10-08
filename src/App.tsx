@@ -6,6 +6,7 @@ import Index from './pages/Index';
 import Events from './pages/Events';
 import BookEvent from './pages/BookEvent';
 import About from './pages/About';
+import Login from './pages/Login';
 import Register from './pages/Register';
 import UserDashboard from './pages/user/UserDashboard';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/events" element={<Events />} />
           <Route path="/book/:eventId" element={<BookEvent />} />
           <Route path="/about" element={<About />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
           {/* User Dashboard */}

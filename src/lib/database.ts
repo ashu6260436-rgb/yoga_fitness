@@ -1,140 +1,256 @@
-import { Event, User, Booking } from '@/types';
+import { supabase } from './supabase';
 
-// Simulate database with localStorage
-class LocalDatabase {
-  private getFromStorage<T>(key: string): T[] {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+export interface Event {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
+  location: string;
+  max_participants: number;
+  current_participants: number;
+  price: number;
+  image: string;
+  type: 'previous' | 'upcoming';
+  instructor: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  phone: string;
+  student_id: string;
+  role: string;
+}
+
+export interface Booking {
+  id: string;
+  user_id: string;
+  event_id: string;
+  booking_date: string;
+  payment_status: 'pending' | 'completed' | 'failed';
+  payment_id: string;
+  amount: number;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'booking' | 'event' | 'system';
+  read: boolean;
+  created_at: string;
+}
+
+class SupabaseDatabase {
+  async getEvents(): Promise<Event[]> {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .order('date', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
   }
 
-  private saveToStorage<T>(key: string, data: T[]): void {
-    localStorage.setItem(key, JSON.stringify(data));
+  async getEventById(id: string): Promise<Event | null> {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
-  // Events
-  getEvents(): Event[] {
-    return this.getFromStorage<Event>('events');
+  async addEvent(event: Omit<Event, 'id'>): Promise<Event> {
+    const { data, error } = await supabase
+      .from('events')
+      .insert(event)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
-  addEvent(event: Event): void {
-    const events = this.getEvents();
-    events.push(event);
-    this.saveToStorage('events', events);
+  async updateEvent(eventId: string, updatedEvent: Partial<Event>): Promise<Event> {
+    const { data, error } = await supabase
+      .from('events')
+      .update(updatedEvent)
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
-  updateEvent(eventId: string, updatedEvent: Partial<Event>): void {
-    const events = this.getEvents();
-    const index = events.findIndex(e => e.id === eventId);
-    if (index !== -1) {
-      events[index] = { ...events[index], ...updatedEvent };
-      this.saveToStorage('events', events);
-    }
+  async deleteEvent(eventId: string): Promise<void> {
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId);
+
+    if (error) throw error;
   }
 
-  deleteEvent(eventId: string): void {
-    const events = this.getEvents().filter(e => e.id !== eventId);
-    this.saveToStorage('events', events);
+  async getUsers(): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
-  // Users
-  getUsers(): User[] {
-    return this.getFromStorage<User>('users');
+  async getUserById(id: string): Promise<User | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
-  addUser(user: User): void {
-    const users = this.getUsers();
-    users.push(user);
-    this.saveToStorage('users', users);
+  async getUserByEmail(email: string): Promise<User | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
   }
 
-  getUserByEmail(email: string): User | undefined {
-    return this.getUsers().find(u => u.email === email);
+  async addUser(user: Omit<User, 'id'>): Promise<User> {
+    const { data, error } = await supabase
+      .from('users')
+      .insert(user)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
-  // Bookings
-  getBookings(): Booking[] {
-    return this.getFromStorage<Booking>('bookings');
+  async updateUser(userId: string, updatedUser: Partial<User>): Promise<User> {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updatedUser)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
-  addBooking(booking: Booking): void {
-    const bookings = this.getBookings();
-    bookings.push(booking);
-    this.saveToStorage('bookings', bookings);
+  async getBookings(): Promise<Booking[]> {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .order('booking_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
-  updateBooking(bookingId: string, updatedBooking: Partial<Booking>): void {
-    const bookings = this.getBookings();
-    const index = bookings.findIndex(b => b.id === bookingId);
-    if (index !== -1) {
-      bookings[index] = { ...bookings[index], ...updatedBooking };
-      this.saveToStorage('bookings', bookings);
-    }
+  async getBookingsByUserId(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        events (
+          title,
+          date,
+          time,
+          location,
+          instructor,
+          image
+        )
+      `)
+      .eq('user_id', userId)
+      .order('booking_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
-  // Initialize with dummy data
-  initializeDummyData(): void {
-    if (this.getEvents().length === 0) {
-      const dummyEvents: Event[] = [
-        {
-          id: '1',
-          title: 'Morning Yoga Session',
-          description: 'Start your day with energizing yoga poses and breathing exercises.',
-          date: '2024-08-15',
-          time: '07:00',
-          location: 'IIPS Yoga Hall',
-          maxParticipants: 50,
-          currentParticipants: 45,
-          price: 0,
-          image: '/api/placeholder/400/300',
-          type: 'previous',
-          instructor: 'Mrs. Manju Suchdeo'
-        },
-        {
-          id: '2',
-          title: 'Fitness Boot Camp',
-          description: 'High-intensity workout session for building strength and endurance.',
-          date: '2024-08-20',
-          time: '17:00',
-          location: 'IIPS Sports Ground',
-          maxParticipants: 30,
-          currentParticipants: 28,
-          price: 100,
-          image: '/api/placeholder/400/300',
-          type: 'previous',
-          instructor: 'Dr. Surendra Malviya'
-        },
-        {
-          id: '3',
-          title: 'Meditation Workshop',
-          description: 'Learn mindfulness and meditation techniques for stress relief.',
-          date: '2024-09-10',
-          time: '16:00',
-          location: 'IIPS Meditation Center',
-          maxParticipants: 40,
-          currentParticipants: 15,
-          price: 50,
-          image: '/api/placeholder/400/300',
-          type: 'upcoming',
-          instructor: 'Mrs. Manju Suchdeo'
-        },
-        {
-          id: '4',
-          title: 'Advanced Yoga Workshop',
-          description: 'Advanced yoga poses and techniques for experienced practitioners.',
-          date: '2024-09-20',
-          time: '08:00',
-          location: 'IIPS Yoga Hall',
-          maxParticipants: 25,
-          currentParticipants: 8,
-          price: 150,
-          image: '/api/placeholder/400/300',
-          type: 'upcoming',
-          instructor: 'Mrs. Manju Suchdeo'
-        }
-      ];
-      this.saveToStorage('events', dummyEvents);
-    }
+  async addBooking(booking: Omit<Booking, 'id'>): Promise<Booking> {
+    const { data, error } = await supabase
+      .from('bookings')
+      .insert(booking)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async updateBooking(bookingId: string, updatedBooking: Partial<Booking>): Promise<Booking> {
+    const { data, error } = await supabase
+      .from('bookings')
+      .update(updatedBooking)
+      .eq('id', bookingId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async addNotification(notification: Omit<Notification, 'id' | 'created_at'>): Promise<Notification> {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert(notification)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async markNotificationAsRead(notificationId: string): Promise<Notification> {
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false);
+
+    if (error) throw error;
+    return count || 0;
   }
 }
 
-export const db = new LocalDatabase();
+export const db = new SupabaseDatabase();

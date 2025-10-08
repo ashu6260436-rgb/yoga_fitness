@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Menu, Heart, LogOut, User as UserIcon } from 'lucide-react';
 import { AuthService } from '@/lib/auth';
+import { NotificationBell } from './NotificationBell';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -64,6 +65,7 @@ const Navbar = () => {
             </div>
             {isAuthenticated ? (
               <div className="flex items-center gap-2 ml-4">
+                <NotificationBell />
                 <Link to="/user/dashboard">
                   <Button variant="outline" size="sm">
                     <UserIcon className="h-4 w-4 mr-2" />
@@ -80,11 +82,18 @@ const Navbar = () => {
                 </Button>
               </div>
             ) : (
-              <Link to="/register" className="ml-4">
-                <Button size="sm" className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600">
-                  Join Now
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2 ml-4">
+                <Link to="/login">
+                  <Button variant="outline" size="sm">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link to="/register">
+                  <Button size="sm" className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600">
+                    Join Now
+                  </Button>
+                </Link>
+              </div>
             )}
           </div>
 
